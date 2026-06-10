@@ -1,0 +1,157 @@
+{
+  "load_ref1": {
+    "class_type": "LoadImage",
+    "inputs": { "image": "example.png" },
+    "_meta": { "title": "Reference 1 (left panel)" }
+  },
+  "load_ref2": {
+    "class_type": "LoadImage",
+    "inputs": { "image": "example.png" },
+    "_meta": { "title": "Reference 2 (middle panel)" }
+  },
+  "scale_ref1": {
+    "class_type": "ImageScale",
+    "inputs": { "image": ["load_ref1", 0], "upscale_method": "lanczos", "width": 1024, "height": 1024, "crop": "center" },
+    "_meta": { "title": "Fit ref 1 to panel" }
+  },
+  "scale_ref2": {
+    "class_type": "ImageScale",
+    "inputs": { "image": ["load_ref2", 0], "upscale_method": "lanczos", "width": 1024, "height": 1024, "crop": "center" },
+    "_meta": { "title": "Fit ref 2 to panel" }
+  },
+  "canvas_bg": {
+    "class_type": "EmptyImage",
+    "inputs": { "width": 3072, "height": 1024, "batch_size": 1, "color": 8421504 },
+    "_meta": { "title": "Gray triptych canvas 3072x1024" }
+  },
+  "canvas_a": {
+    "class_type": "ImageCompositeMasked",
+    "inputs": { "destination": ["canvas_bg", 0], "source": ["scale_ref1", 0], "x": 0, "y": 0, "resize_source": false },
+    "_meta": { "title": "Paste ref 1 left" }
+  },
+  "canvas": {
+    "class_type": "ImageCompositeMasked",
+    "inputs": { "destination": ["canvas_a", 0], "source": ["scale_ref2", 0], "x": 1024, "y": 0, "resize_source": false },
+    "_meta": { "title": "Paste ref 2 middle" }
+  },
+  "mask_canvas": {
+    "class_type": "SolidMask",
+    "inputs": { "value": 0.0, "width": 3072, "height": 1024 },
+    "_meta": { "title": "Mask canvas (0 = locked)" }
+  },
+  "mask_right": {
+    "class_type": "SolidMask",
+    "inputs": { "value": 1.0, "width": 1024, "height": 1024 },
+    "_meta": { "title": "Right third = generate" }
+  },
+  "mask": {
+    "class_type": "MaskComposite",
+    "inputs": { "destination": ["mask_canvas", 0], "source": ["mask_right", 0], "x": 2048, "y": 0, "operation": "add" },
+    "_meta": { "title": "Both references locked, right third free" }
+  },
+  "unet": {
+    "class_type": "UNETLoader",
+    "inputs": { "unet_name": "ideogram4_fp8_scaled.safetensors", "weight_dtype": "default" },
+    "_meta": { "title": "Ideogram 4 (conditional)" }
+  },
+  "unet_uncond": {
+    "class_type": "UNETLoader",
+    "inputs": { "unet_name": "ideogram4_unconditional_fp8_scaled.safetensors", "weight_dtype": "default" },
+    "_meta": { "title": "Ideogram 4 (unconditional, for asymmetric CFG)" }
+  },
+  "clip": {
+    "class_type": "CLIPLoader",
+    "inputs": { "clip_name": "qwen3vl_8b_fp8_scaled.safetensors", "type": "ideogram4", "device": "default" },
+    "_meta": { "title": "Qwen3-VL text encoder" }
+  },
+  "vae": {
+    "class_type": "VAELoader",
+    "inputs": { "vae_name": "flux2-vae.safetensors" },
+    "_meta": { "title": "VAE" }
+  },
+  "caption": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": ["clip", 0],
+      "text": "{\n  \"high_level_description\": \"A three-panel sheet of photographs. Left panel: a full-body studio reference photo of PERSON A — DESCRIBE A. Middle panel: a full-body studio reference photo of PERSON B — DESCRIBE B. Right panel: the exact same two people from the first two panels, same faces, same hair, same outfits, together — DESCRIBE NEW SCENE / ACTION\",\n  \"style_description\": {\n    \"aesthetics\": \"clean, natural, true-to-life\",\n    \"lighting\": \"soft diffused daylight\",\n    \"photo\": \"full-body portrait\",\n    \"medium\": \"photograph\"\n  },\n  \"compositional_deconstruction\": {\n    \"background\": \"left and middle panels: plain light gray studio backdrop; right panel: DESCRIBE NEW SCENE BACKGROUND\",\n    \"elements\": [\n      {\n        \"type\": \"obj\",\n        \"bbox\": [40, 60, 980, 270],\n        \"desc\": \"PERSON A — DESCRIBE, standing, studio reference\",\n        \"color_palette\": [\"#2A9D8F\", \"#D4A017\"]\n      },\n      {\n        \"type\": \"obj\",\n        \"bbox\": [40, 390, 980, 600],\n        \"desc\": \"PERSON B — DESCRIBE, standing, studio reference\",\n        \"color_palette\": [\"#1F3A5F\", \"#C75B12\"]\n      },\n      {\n        \"type\": \"obj\",\n        \"bbox\": [100, 680, 950, 990],\n        \"desc\": \"the exact same two people: PERSON A and PERSON B, identical faces and outfits, DOING THE NEW ACTION together\",\n        \"color_palette\": [\"#2A9D8F\", \"#D4A017\", \"#1F3A5F\", \"#C75B12\"]\n      }\n    ]\n  }\n}"
+    },
+    "_meta": { "title": "Triptych caption — describe each person ONCE in detail, reuse verbatim in their elements; panel thirds are bbox x 0-333 / 333-667 / 667-1000" }
+  },
+  "caption_zero": {
+    "class_type": "ConditioningZeroOut",
+    "inputs": { "conditioning": ["caption", 0] },
+    "_meta": { "title": "Zeroed cond for uncond pass" }
+  },
+  "cfg_override": {
+    "class_type": "CFGOverride",
+    "inputs": { "model": ["unet", 0], "cfg": 3.0, "start_percent": 0.7, "end_percent": 1.0 },
+    "_meta": { "title": "CFG 3 for last 30% of trajectory" }
+  },
+  "guider": {
+    "class_type": "DualModelGuider",
+    "inputs": {
+      "model": ["cfg_override", 0],
+      "positive": ["caption", 0],
+      "cfg": 7.0,
+      "model_negative": ["unet_uncond", 0],
+      "negative": ["caption_zero", 0]
+    },
+    "_meta": { "title": "Asymmetric CFG guider" }
+  },
+  "sigmas": {
+    "class_type": "Ideogram4Scheduler",
+    "inputs": { "steps": 20, "width": 3072, "height": 1024, "mu": 0.0, "std": 1.75 },
+    "_meta": { "title": "Logit-normal schedule (triptych canvas size)" }
+  },
+  "encode": {
+    "class_type": "VAEEncode",
+    "inputs": { "pixels": ["canvas", 0], "vae": ["vae", 0] },
+    "_meta": { "title": "Encode canvas" }
+  },
+  "masked_latent": {
+    "class_type": "SetLatentNoiseMask",
+    "inputs": { "samples": ["encode", 0], "mask": ["mask", 0] },
+    "_meta": { "title": "Both reference panels locked every step" }
+  },
+  "noise": {
+    "class_type": "RandomNoise",
+    "inputs": { "noise_seed": 555 },
+    "_meta": { "title": "Noise — vary seed for different takes" }
+  },
+  "euler": {
+    "class_type": "KSamplerSelect",
+    "inputs": { "sampler_name": "euler" },
+    "_meta": { "title": "Euler" }
+  },
+  "sample": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": ["noise", 0],
+      "guider": ["guider", 0],
+      "sampler": ["euler", 0],
+      "sigmas": ["sigmas", 0],
+      "latent_image": ["masked_latent", 0]
+    },
+    "_meta": { "title": "Sample" }
+  },
+  "decode": {
+    "class_type": "VAEDecode",
+    "inputs": { "samples": ["sample", 0], "vae": ["vae", 0] },
+    "_meta": { "title": "Decode" }
+  },
+  "save_triptych": {
+    "class_type": "SaveImage",
+    "inputs": { "images": ["decode", 0], "filename_prefix": "charref2_triptych" },
+    "_meta": { "title": "Save full triptych (for checking)" }
+  },
+  "crop_result": {
+    "class_type": "ImageCrop",
+    "inputs": { "image": ["decode", 0], "width": 1024, "height": 1024, "x": 2048, "y": 0 },
+    "_meta": { "title": "Crop generated right panel" }
+  },
+  "save_result": {
+    "class_type": "SaveImage",
+    "inputs": { "images": ["crop_result", 0], "filename_prefix": "charref2_result" },
+    "_meta": { "title": "Save final result" }
+  }
+}
