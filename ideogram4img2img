@@ -1,0 +1,113 @@
+{
+  "load_image": {
+    "class_type": "LoadImage",
+    "inputs": { "image": "example.png" },
+    "_meta": { "title": "Load source image (use dims that are multiples of 16, 256-2048)" }
+  },
+  "image_size": {
+    "class_type": "GetImageSize",
+    "inputs": { "image": ["load_image", 0] },
+    "_meta": { "title": "Get image size" }
+  },
+  "unet": {
+    "class_type": "UNETLoader",
+    "inputs": { "unet_name": "ideogram4_fp8_scaled.safetensors", "weight_dtype": "default" },
+    "_meta": { "title": "Ideogram 4 (conditional)" }
+  },
+  "unet_uncond": {
+    "class_type": "UNETLoader",
+    "inputs": { "unet_name": "ideogram4_unconditional_fp8_scaled.safetensors", "weight_dtype": "default" },
+    "_meta": { "title": "Ideogram 4 (unconditional, for asymmetric CFG)" }
+  },
+  "clip": {
+    "class_type": "CLIPLoader",
+    "inputs": { "clip_name": "qwen3vl_8b_fp8_scaled.safetensors", "type": "ideogram4", "device": "default" },
+    "_meta": { "title": "Qwen3-VL text encoder" }
+  },
+  "vae": {
+    "class_type": "VAELoader",
+    "inputs": { "vae_name": "flux2-vae.safetensors" },
+    "_meta": { "title": "VAE" }
+  },
+  "caption": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": ["clip", 0],
+      "text": "{\n  \"high_level_description\": \"DESCRIBE THE EDITED IMAGE HERE — describe the whole target scene, not just the change\",\n  \"style\": {\n    \"medium\": \"photograph\",\n    \"lighting\": \"warm golden hour sidelight\",\n    \"mood\": \"serene\"\n  }\n}"
+    },
+    "_meta": { "title": "Edit caption (JSON)" }
+  },
+  "caption_zero": {
+    "class_type": "ConditioningZeroOut",
+    "inputs": { "conditioning": ["caption", 0] },
+    "_meta": { "title": "Zeroed cond for uncond pass" }
+  },
+  "cfg_override": {
+    "class_type": "CFGOverride",
+    "inputs": { "model": ["unet", 0], "cfg": 3.0, "start_percent": 0.7, "end_percent": 1.0 },
+    "_meta": { "title": "CFG 3 for last 30% of trajectory" }
+  },
+  "guider": {
+    "class_type": "DualModelGuider",
+    "inputs": {
+      "model": ["cfg_override", 0],
+      "positive": ["caption", 0],
+      "cfg": 7.0,
+      "model_negative": ["unet_uncond", 0],
+      "negative": ["caption_zero", 0]
+    },
+    "_meta": { "title": "Asymmetric CFG guider" }
+  },
+  "sigmas_full": {
+    "class_type": "Ideogram4Scheduler",
+    "inputs": {
+      "steps": 20,
+      "width": ["image_size", 0],
+      "height": ["image_size", 1],
+      "mu": 0.0,
+      "std": 1.75
+    },
+    "_meta": { "title": "Logit-normal schedule (Default preset)" }
+  },
+  "sigmas_split": {
+    "class_type": "SplitSigmasDenoise",
+    "inputs": { "sigmas": ["sigmas_full", 0], "denoise": 0.65 },
+    "_meta": { "title": "SDEdit strength: 0.4 subtle restyle, 0.55-0.75 semantic edit, >0.8 loose" }
+  },
+  "encode": {
+    "class_type": "VAEEncode",
+    "inputs": { "pixels": ["load_image", 0], "vae": ["vae", 0] },
+    "_meta": { "title": "Encode source to latent" }
+  },
+  "noise": {
+    "class_type": "RandomNoise",
+    "inputs": { "noise_seed": 42 },
+    "_meta": { "title": "Noise" }
+  },
+  "euler": {
+    "class_type": "KSamplerSelect",
+    "inputs": { "sampler_name": "euler" },
+    "_meta": { "title": "Euler" }
+  },
+  "sample": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": ["noise", 0],
+      "guider": ["guider", 0],
+      "sampler": ["euler", 0],
+      "sigmas": ["sigmas_split", 1],
+      "latent_image": ["encode", 0]
+    },
+    "_meta": { "title": "Sample (low_sigmas = SDEdit)" }
+  },
+  "decode": {
+    "class_type": "VAEDecode",
+    "inputs": { "samples": ["sample", 0], "vae": ["vae", 0] },
+    "_meta": { "title": "Decode" }
+  },
+  "save": {
+    "class_type": "SaveImage",
+    "inputs": { "images": ["decode", 0], "filename_prefix": "ideogram4_sdedit" },
+    "_meta": { "title": "Save" }
+  }
+}
