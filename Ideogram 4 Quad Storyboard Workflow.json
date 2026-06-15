@@ -314,7 +314,7 @@
         "Node name for S&R": "SaveImage"
       },
       "widgets_values": [
-        "frames_v2/frame_TR"
+        "quad_frames/frame_TR"
       ]
     },
     {
@@ -346,7 +346,7 @@
         "Node name for S&R": "SaveImage"
       },
       "widgets_values": [
-        "frames_v2/frame_BR"
+        "quad_frames/frame_BR"
       ]
     },
     {
@@ -1164,7 +1164,7 @@
         "Node name for S&R": "SaveImage"
       },
       "widgets_values": [
-        "frames_v2/frame_TL"
+        "quad_frames/frame_TL"
       ]
     },
     {
@@ -1196,7 +1196,7 @@
         "Node name for S&R": "SaveImage"
       },
       "widgets_values": [
-        "frames_v2/frame_BL"
+        "quad_frames/frame_BL"
       ]
     },
     {
@@ -2447,7 +2447,7 @@
     },
     {
       "id": 3,
-      "title": "Subjects + Frames + Builder (v2)",
+      "title": "Subjects + Frames + Builder",
       "bounding": [
         538.3951793193343,
         -39.44904363021763,
